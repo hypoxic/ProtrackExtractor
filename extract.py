@@ -13,7 +13,10 @@ import sys
 import re
 from datetime import datetime
 
-# extracted from freefallbits 
+# Extracted from freefallbits Skydiver Logbook. 
+#  Assuming they got some help from LB. Says open source, but 
+#  was not able to find the repository. Extracted these 
+#  constants from the .net files. 
 TimeStep = 0.25
 TimeInitial = -2.0
 TimeSpeedStarts = 6.0
@@ -55,11 +58,14 @@ def MsecToMsec(m):
        
 def PressureToMeter(p, groundLevelMeter):
 	return 44330.8 * (1.0 - pow(p / 10132.5, 0.190263)) - groundLevelMeter
-    
+
+#
+# Main
+#     
 def main():
     if len(sys.argv) < 2:
         print("Missing arguments: %s <input.txt> <output>" % sys.argv[0])
-        quit()
+        sys.exit()
         
     inf= sys.argv[1]   
     if len(sys.argv) < 3: 
@@ -69,51 +75,53 @@ def main():
     
     if(not os.path.isfile(inf)):
         print("Input file \"%s\" does not exist" % inf)
-        quit()
+        sys.exit(1)
     
     # Reading in file
-    lined = []	
+    lined = []
     with open(inf) as f:
         for line in f:
             line = line.replace('\n','')
             lined.append(line)
         
-        lines = len(lined)   
+    lines = len(lined)   
 
-    if not "JIB" in lined[0]:
-        print("Not protrack file JIB \"%s\"" % lined[0])
-        quit()
+    if not lines or not "JIB" in lined[0]:
+        print("Error: Not ProTrackII file")
+        sys.exit(1)
     if not "PIE" in lined[lines-1]:  
-        print("Not protrack profile does not exist PIE \"%s\"" % lined[lines-1])
-        quit()  
+        print("Error: Not ProTrackII profile does not exist PIE \"%s\"" % lined[lines-1])
+        sys.exit(1)  
         
+    # Some data lines not deciphered. Perhaps protocol versions?   
     #print(lined[1])    1.00
     #print(lined[2])   1
     #print(lined[3])    1.00  
         
-    SerialNumber = lined[4]    
-    JumpNumber = int(lined[5])
-    datestr  = str("%s%s" % (lined[6],lined[7]))
+    # Extract information from protrackii txt file
+    #  Data deliminted by line number.
+    JumpDataMeter   = []
+    SpeedList       = []
+    AccelList       = []   
+    SerialNumber    = lined[4]    
+    JumpNumber      = int(lined[5])
+    datestr         = str("%s%s" % (lined[6],lined[7]))
     datetime_object = datetime.strptime(datestr, '%Y%m%d%H%M%S')
-    ExitAltitude = int(lined[8])
+    ExitAltitude    = int(lined[8])
     DeploymentAltitude = int(lined[9])
-    FreefallTime = int(lined[10])
-    AverageSpeed = int(lined[11])
-    MaxSpeed = int(lined[12])
-    FirstHalfSpeed = int(lined[14])
+    FreefallTime    = int(lined[10])
+    AverageSpeed    = int(lined[11])
+    MaxSpeed        = int(lined[12])
+    FirstHalfSpeed  = int(lined[14])
     SecondHalfSpeed = int(lined[15])
-    GroundLevel = int(lined[35])/10.0  
-    profileExists = int(lined[36])  
+    GroundLevel     = int(lined[35])/10.0  # Pressure at ground level. 
+    profileExists   = int(lined[36])     
     canopyDataInProfile = int(lined[37])  
-    profilePoints = int(lined[38]) 
-    JumpData = ''.join(lined[39:lines-1]).split(",")
-    JumpData.pop() # remove last element
-    JumpDataInt = list(map(int, JumpData))
-
-    JumpDataMeter = []
-    SpeedList = []
-
-    GroundLeveldPa = MiliBarToDecaPa(GroundLevel)
+    profilePoints   = int(lined[38]) 
+    JumpData        = ''.join(lined[39:lines-1]).split(",")
+    JumpData.pop()  # remove last element
+    JumpDataInt     = list(map(int, JumpData)) # convert strings to meters
+    GroundLeveldPa  = MiliBarToDecaPa(GroundLevel)
     groundLevelMeter = (int)(44330.8 * (1.0 - pow(GroundLevel / 1013.25, 0.190263)))
 
     i = 0
@@ -135,8 +143,7 @@ def main():
             SpeedList.append((JumpDataMeter[i -IndexIncForSpeedCanopy] - alti) / TimeIncForSpeedCanopy)
         i+=1
         
-    # Calculate acceleration        
-    AccelList = []        
+    # Calculate acceleration             
     i = 0        
     for alti in JumpDataMeter:
         if i < IndexSpeedStart:
@@ -167,10 +174,10 @@ def main():
     with open(outf, 'w') as csvfile:     
         csvfile.write(str("Time(s),Altitude(m),Altitude(ft),Speed(mph),Comments\n") )
         for i in range(0,len(JumpDataMeter)):
-            t = IndexToTime(i)
-            alti = JumpDataMeter[i]
-            speed = SpeedList[i]
-            accel = AccelList[i]
+            t       = IndexToTime(i)
+            alti    = JumpDataMeter[i]
+            speed   = SpeedList[i]
+            accel   = AccelList[i]
             
             if(i == DeploymentIndex):
                 comment = "Deployment"

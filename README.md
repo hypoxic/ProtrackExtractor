@@ -1,5 +1,5 @@
 # ProtrackExtractor
- Extracts a jump's altitude profile data from a ProtrackII and creates a CSV file with the respective data. This data is good for Full Break Sequentials where you want to ensure the fall rate remains constant between points and attempts. Works even when in Skyvan's where obtaining GPS signals does not work until exit. 
+ Extracts a jump's altitude profile data from a ProtrackII and creates a CSV file with the respective data. This data is good for Full Break Sequentials where you want to ensure the fall rate remains constant between points and attempts. Works even when in Skyvan's where obtaining GPS signals does not work until late on the dive. 
    
 This is useful to understand the commponents of ProtrackII's data file. 
 

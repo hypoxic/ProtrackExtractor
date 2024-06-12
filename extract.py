@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 
 # ProtrackII jump data extractor. 
-# Trunk 2023
+# Trunk 2024
 
 # Based on code from 
 #   https://github.com/damjandakic93/ProtrackReader
 #   and "Skydive Logbook" from Freefall Bits
+#   Thank you to Daniel Gómez for the special help on calculating LB's SAS
 
 import csv
 import os
@@ -28,6 +29,10 @@ IndexIncForSpeedInFF = 24
 IndexIncForSpeedCanopy = 12 
 A_GRAVITY   = 9.80665     # Standard acceleration due to gravity (m/s^2)
 SL_PRESSURE = 101325      # Sea level pessure (Pa)
+SL_PRESSURE_DPA = 10132.5
+BARO_POWER  = 0.190263
+STANDARD_TEMP_k = 44330.8
+
 SL_DENSITY  = 1.225       # Sea level density (kg/m^3)
 LAPSE_RATE  = 0.0065      # Temperature lapse rate (K/m)
 SL_TEMP     = 288.15      # Sea level temperature (K)
@@ -113,7 +118,7 @@ def MsecToMsec(m):
     return round(m) 
        
 def PressureToMeter(p, GroundLevelMeter):
-	return 44330.8 * (1.0 - pow(p / 10132.5, 0.190263)) - GroundLevelMeter
+	return STANDARD_TEMP_k * (1.0 - pow(p / SL_PRESSURE_DPA, BARO_POWER)) - GroundLevelMeter
 
 # Based on LB's Calculation. Assume 15C at sea level
 def PressureToTemp15C(p, GroundLeveldPa):
@@ -153,18 +158,20 @@ def main():
         print("Error: Not ProTrackII profile does not exist PIE \"%s\"" % lined[lines-1])
         sys.exit(1)  
         
-    # Some data lines not deciphered. Perhaps protocol versions?   
-    FileVersionFormat = lined[1]      # 1.00
-    Device = lined[2]                 # 1 - Device:1=PROTRACK2 or 2=UnKnown
-    ProTrack2Version = lined[3]       # 1.00  # ProTrack2 firmware version format: XX.xx
-        
-    # Extract information from protrackii txt file
-    #  Data deliminted by line number.
+    # Lists
     AltiMeterList   = []
     SpeedList       = []
     SasSpeedList    = []
     AccelList       = []   
     SasMeterList    = []
+    i = 0
+    DeploymentIndex = -1        
+        
+    # Extract information from protrackii txt file
+    #  Data deliminted by line number.
+    FileVersionFormat = lined[1]      # 1.00
+    Device          = lined[2]                 # 1 - Device:1=PROTRACK2 or 2=UnKnown
+    ProTrack2Version = lined[3]       # 1.00  # ProTrack2 firmware version format: XX.xx
     SerialNumber    = lined[4]          # ProTrack2 Serial Number: YYMMDDHHMMSS
     JumpNumber      = int(lined[5])     # JumpNumber: Range 0-99999 
     datestr         = str("%s%s" % (lined[6],lined[7]))
@@ -183,29 +190,28 @@ def main():
     JumpData        = ''.join(lined[39:lines-1]).split(",")
     JumpData.pop()  # remove last element
     JumpDataInt     = list(map(int, JumpData)) # convert strings to meters
+    
     GroundLevelmbar = DecaPaToMiliBar(GroundLeveldPa) # Pressure at ground level. 
-    GroundLevelMeter = (int)(44330.8 * (1.0 - pow(GroundLeveldPa / 10132.5, 0.190263)))
-
-    i = 0
-    DeploymentIndex = -1
-    
-    exit_dbar = JumpDataInt[IndexSpeedStart]
-    IcaoTempC = round(15-(44330.8*(1- pow((exit_dbar/10132.5),0.190263))*0.0065))
+    GroundLevelMeter = (int)(STANDARD_TEMP_k * (1.0 - pow(GroundLeveldPa / SL_PRESSURE_DPA, BARO_POWER)))    
+    exit_dbar = JumpDataInt[IndexExit]
+    IcaoTempC = round(15-(STANDARD_TEMP_k*(1- pow((exit_dbar/SL_PRESSURE_DPA),BARO_POWER))*0.0065))
     icao_div = IcaoTempC # incase Fahrenheit
-    hs = (44330.8*(1-pow((GroundLeveldPa/10132.5),0.190263)))
-    ht = (44330.8*(1-pow((GroundLeveldPa/10132.5),0.190263)))*(1+((icao_div)*0.004));
+    hs = (STANDARD_TEMP_k*(1-pow((GroundLeveldPa/SL_PRESSURE_DPA),BARO_POWER)))
+    ht = (STANDARD_TEMP_k*(1-pow((GroundLeveldPa/SL_PRESSURE_DPA),BARO_POWER)))*(1+((icao_div)*0.004))
     
+    """
     print("exit_dbar: %0.1f dpa" % exit_dbar)
     print("hs: %0.1f meter" % hs)
     print("ht: %0.1f meter" % ht)
     print("IcaoTempC: %0.1fC\n" % IcaoTempC)
+    """
         
     for readingDBar in JumpDataInt:
         alti = PressureToMeter(readingDBar, GroundLevelMeter)
         AltiMeterList.append(alti)
                 
         # SAS meter table
-        sasmeter = (44330.8*(1 - pow((readingDBar/10132.5),0.190263)))*(1+(icao_div*0.004))+(hs-ht)+GroundLevelMeter
+        sasmeter = (STANDARD_TEMP_k*(1 - pow((readingDBar/SL_PRESSURE_DPA),BARO_POWER)))*(1+(icao_div*0.004))+(hs-ht)+GroundLevelMeter
         SasMeterList.append(sasmeter)
         
         #set deployment index
@@ -254,15 +260,17 @@ def main():
     print("MaxSpeed: %dmph" % MsecTomph(MaxSpeed))
     print("FirstHalfSpeed: %dmph" % MsecTomph(FirstHalfSpeed))
     print("SecondHalfSpeed: %dmph" % MsecTomph(SecondHalfSpeed))
-    print("GroundLevelMeter: %0.1f" % GroundLevelMeter)
+    #print("GroundLevelMeter: %0.1f" % GroundLevelMeter)
     
     # Write it out
     if not outf:
         outf = str("%s.csv" % JumpNumber)
     with open(outf, 'w') as csvfile:     
         csvfile.write(str("Time(s),Altitude(ft),TAS(mph),SAS LB(mph),Comments\n") )
-        for i in range(0,len(AltiMeterList)):
+        for i in range(0,len(AltiMeterList)):               
             t       = IndexToTime(i)
+            if t<0:
+                continue
             alti    = AltiMeterList[i]
             tas     = SpeedList[i]
             sas     = SasSpeedList[i]

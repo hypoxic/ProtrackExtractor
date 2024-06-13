@@ -6,7 +6,7 @@
 # Based on code from 
 #   https://github.com/damjandakic93/ProtrackReader
 #   and "Skydive Logbook" from Freefall Bits
-#   Thank you to Daniel Gómez for the special help on calculating LB's SAS
+#   Thank you to Daniel Gomez for the special help on calculating LB's SAS
 
 import csv
 import os
@@ -15,10 +15,7 @@ import re
 import math
 from datetime import datetime
 
-# Extracted from freefallbits Skydiver Logbook. 
-#  Assuming they got some help from LB. Says open source, but 
-#  was not able to find the repository. Extracted these 
-#  constants from the .net files. 
+# Constants
 TimeStep = 0.25
 TimeInitial = -2.0
 TimeSpeedStarts = 6.0
@@ -157,6 +154,12 @@ def main():
     if not "PIE" in lined[lines-1]:  
         print("Error: Not ProTrackII profile does not exist PIE \"%s\"" % lined[lines-1])
         sys.exit(1)  
+    if not "JIE" in lined[33]:  
+        print("Error: Not ProTrackII profile does not exist JIE \"%s\"" % lined[33])
+        sys.exit(1)  
+    if not "PIB" in lined[34]:  
+        print("Error: Not ProTrackII profile does not exist JIE \"%s\"" % lined[34])
+        sys.exit(1)  
         
     # Lists
     AltiMeterList   = []
@@ -176,13 +179,41 @@ def main():
     JumpNumber      = int(lined[5])     # JumpNumber: Range 0-99999 
     datestr         = str("%s%s" % (lined[6],lined[7]))
     datetime_object = datetime.strptime(datestr, '%Y%m%d%H%M%S')
-    ExitAltitude    = int(lined[8])
-    DeploymentAltitude = int(lined[9])
-    FreefallTime    = int(lined[10])
-    AverageSpeed    = int(lined[11])
-    MaxSpeed        = int(lined[12])
-    FirstHalfSpeed  = int(lined[14])
-    SecondHalfSpeed = int(lined[15])
+    ExitAltitude    = int(lined[8])     # Exit Altitude: Range 0-99999 in metre
+    DeploymentAltitude = int(lined[9])  # Deployment Altitude: Range 0-99999 in metre
+    FreefallTime       = int(lined[10]) # Range 0-999 in seconds
+    
+    TASAverageSpeed    = int(lined[11]) # TAS Average Speed: Range 0-999 in m/s        
+    TASMaxSpeed        = int(lined[12]) # TAS Max. Speed: Range 0-999 in m/s           
+    TASMinSpeed        = int(lined[13]) # TAS Min. Speed: Range 0-999 in m/s           
+    TASFirstHalfSpeed  = int(lined[14]) # TAS First Half Speed: Range 0-999 in m/s     
+    TASSecondHalfSpeed = int(lined[15]) # TAS Second Half Speed: Range 0-999 in m/s    
+    
+    SASAverageSpeed    = int(lined[16]) # SAS Average Speed: Range 0-999 in m/s
+    SASMaxSpeed        = int(lined[17]) # SAS Max. Speed: Range 0-999 in m/s
+    SASMinSpeed        = int(lined[18]) # SAS Min. Speed: Range 0-999 in m/s
+    SASFirstHalfSpeed  = int(lined[19]) # SAS First Half Speed: Range 0-999 in m/s
+    SASSecondHalfSpeed = int(lined[20]) # SAS Second Half Speed: Range 0-999 in m/s
+    
+    TempC = int(lined[21])/10  # Temperature in Celsius (C)
+    
+    DiveType = int(lined[22])  # Dive Type: Range 0-20
+    
+    LL1 = int(lined[23]) # Lookup line 1: Range 0-999999
+    LL2 = int(lined[24]) # Lookup line 2: Range 0-999999
+    LL3 = int(lined[25]) # Lookup line 3: Range 0-999999
+    LL4 = int(lined[26]) # Lookup line 4: Range 0-999999
+    LL5 = int(lined[27]) # Lookup line 5: Range 0-999999
+    
+    RFU1 = int(lined[28]) # (Reserved Future Use)
+    RFU2 = int(lined[29])
+    RFU3 = int(lined[30])
+    RFU4 = int(lined[31])
+    RFU5 = int(lined[32])
+    
+    JIE = lined[33]  # JIE Jump Information End
+    PIB = lined[34]  # Profile Information Begin:
+    
     GroundLeveldPa  = int(lined[35])
     profileExists   = int(lined[36])     
     canopyDataInProfile = int(lined[37])  
@@ -194,7 +225,10 @@ def main():
     GroundLevelmbar = DecaPaToMiliBar(GroundLeveldPa) # Pressure at ground level. 
     GroundLevelMeter = (int)(STANDARD_TEMP_k * (1.0 - pow(GroundLeveldPa / SL_PRESSURE_DPA, BARO_POWER)))    
     exit_dbar = JumpDataInt[IndexExit]
+    
+    #IcaoTempC = TempC-(6.5*ExitAltitude/1000)   # Convert temperature at DZ to Temp at SeaLevel 6.5C per 1000 meter 
     IcaoTempC = round(15-(STANDARD_TEMP_k*(1- pow((exit_dbar/SL_PRESSURE_DPA),BARO_POWER))*0.0065))
+    
     icao_div = IcaoTempC # incase Fahrenheit
     hs = (STANDARD_TEMP_k*(1-pow((GroundLeveldPa/SL_PRESSURE_DPA),BARO_POWER)))
     ht = (STANDARD_TEMP_k*(1-pow((GroundLeveldPa/SL_PRESSURE_DPA),BARO_POWER)))*(1+((icao_div)*0.004))
@@ -203,7 +237,8 @@ def main():
     print("exit_dbar: %0.1f dpa" % exit_dbar)
     print("hs: %0.1f meter" % hs)
     print("ht: %0.1f meter" % ht)
-    print("IcaoTempC: %0.1fC\n" % IcaoTempC)
+    print("IcaoTempC: %0.1fC" % IcaoTempC)
+    print("TempC: %0.1fC" % TempC)
     """
         
     for readingDBar in JumpDataInt:
@@ -218,35 +253,30 @@ def main():
         if alti <= DeploymentAltitude and DeploymentIndex == -1:
             DeploymentIndex = i
         
-        #speed calculations
-        if i < IndexSpeedStart:    
-            SpeedList.append(0.0)   
-            SasSpeedList.append(0.0) 
-        elif alti > DeploymentAltitude:
-            # setup the contants for SAS as per LB's code                
-            speed = (AltiMeterList[i -IndexIncForSpeedInFF] - alti) / TimeIncForSpeedInFF
-            SpeedList.append(speed)
-            
-            # Now calculate SAS
-            SasSpeed = (SasMeterList[i -IndexIncForSpeedInFF] - sasmeter) / TimeIncForSpeedInFF
-            SasSpeedList.append(SasSpeed)
-        else:
-            speed = (AltiMeterList[i -IndexIncForSpeedCanopy] - alti) / TimeIncForSpeedCanopy
-            SpeedList.append(speed)
-            
-            SasSpeed = (SasMeterList[i -IndexIncForSpeedCanopy] - sasmeter) / TimeIncForSpeedCanopy
-            SasSpeedList.append(SasSpeed)
         i+=1
+    
+    #speed calculations
+    i = 0
+    for i in range(IndexExit+IndexIncForSpeedInFF, len(AltiMeterList)): 
+        if AltiMeterList[i] > DeploymentAltitude:
+            timeinterval = TimeIncForSpeedInFF
+            idxinc       = IndexIncForSpeedInFF
+        else:
+            timeinterval = TimeIncForSpeedCanopy
+            idxinc       = IndexIncForSpeedCanopy
+
+        # setup the contants for SAS as per LB's code                
+        speed = (AltiMeterList[i -idxinc] - AltiMeterList[i]) / timeinterval
+        SpeedList.append(speed)
+        
+        # Now calculate SAS
+        SasSpeed = (SasMeterList[i -idxinc] - SasMeterList[i]) / timeinterval
+        SasSpeedList.append(SasSpeed)    
         
     # Calculate acceleration             
     i = 0        
-    for alti in AltiMeterList:
-        if i < IndexSpeedStart:
-            AccelList.append(0.0)
-        elif round(AltiMeterList[i]) == 0:
-            AccelList.append(0.0)
-        else:        
-            AccelList.append( (MsecToMsec(SpeedList[i]) - MsecToMsec(SpeedList[i-1])) / TimeStep / A_GRAVITY )
+    for i in range(1,len(SpeedList)):
+        AccelList.append( (MsecToMsec(SpeedList[i]) - MsecToMsec(SpeedList[i-1])) / TimeStep / A_GRAVITY )
         i+=1
 
     # print the data we don't care about
@@ -256,20 +286,21 @@ def main():
     print("ExitAltitude: %dm %dft" % (ExitAltitude, MToft(ExitAltitude)))
     print("DeploymentAltitude: %dm %dft" % (DeploymentAltitude,MToft(DeploymentAltitude)))
     print("FreefallTime: %dsec" % (FreefallTime))
-    print("AverageSpeed: %dmph" % MsecTomph(AverageSpeed))
-    print("MaxSpeed: %dmph" % MsecTomph(MaxSpeed))
-    print("FirstHalfSpeed: %dmph" % MsecTomph(FirstHalfSpeed))
-    print("SecondHalfSpeed: %dmph" % MsecTomph(SecondHalfSpeed))
-    #print("GroundLevelMeter: %0.1f" % GroundLevelMeter)
+    print("SAS AverageSpeed: %dmph" % MsecTomph(SASAverageSpeed))
+    print("SAS MaxSpeed: %dmph" % MsecTomph(SASMaxSpeed))
+    print("SAS FirstHalfSpeed: %dmph" % MsecTomph(SASFirstHalfSpeed))
+    print("SAS SecondHalfSpeed: %dmph" % MsecTomph(SASSecondHalfSpeed))
+    print("GroundLevelMeter: %0.1f" % GroundLevelMeter)
     
     # Write it out
+    """
     if not outf:
         outf = str("%s.csv" % JumpNumber)
     with open(outf, 'w') as csvfile:     
         csvfile.write(str("Time(s),Altitude(ft),TAS(mph),SAS LB(mph),Comments\n") )
         for i in range(0,len(AltiMeterList)):               
             t       = IndexToTime(i)
-            if t<0:
+            if t<0 or t > IndexToTime(DeploymentIndex):
                 continue
             alti    = AltiMeterList[i]
             tas     = SpeedList[i]
@@ -286,6 +317,22 @@ def main():
             else:
                 comment = ""
             csvfile.write(str("%f,%d,%0.0f,%0.0f,%s\n" % (t, MToft(alti), MsecTomph(tas), MsecTomph(sas), comment))) 
-
+    """
+    if not outf:
+        outf = str("%s.csv" % JumpNumber)
+    with open(outf, 'w') as csvfile:     
+        csvfile.write(str("Altitude(ft),SAS(mph)\n") )
+        for i in range(0,len(SasSpeedList)):               
+            exitidx = TimeToIndex(0)
+            
+            alti    = AltiMeterList[i+exitidx+IndexIncForSpeedInFF]
+            if(alti <= DeploymentAltitude):
+                break
+            
+            tas     = SpeedList[i]
+            sas     = SasSpeedList[i]
+                        
+            csvfile.write(str("%d,%0.0f\n" % (MToft(alti), MsecTomph(sas)))) 
+            
 if __name__ == "__main__":
     main()
